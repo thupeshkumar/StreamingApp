@@ -6,16 +6,16 @@ pipeline {
         IMAGE_TAG         = "latest"
         AWS_ACCOUNT_ID    = "243747081594"
         AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"
-        ECR_BASE_URL      = "://amazonaws.com"
-        ECR_REGISTRY      = "://amazonaws.com/streamingapp"
+        ECR_BASE_URL      = "243747081594.dkr.ecr.us-east-1.amazonaws.com"
+        ECR_REGISTRY      = "://amazonaws.com"
     }
 
     stages {
         stage('Login to ECR') {
             steps {
-                // Securely binds the hidden AWS Secret Key stored under your Secret Text ID
                 withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ://amazonaws.com'
+                    // Raw string bypasses any potential Groovy parsing engine glitch completely
+                    sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 243747081594.dkr.ecr.us-east-1.amazonaws.com'
                 }
             }
         }
@@ -23,7 +23,6 @@ pipeline {
         stage('Build & Push Images') {
             steps {
                 script {
-                    // Context configurations map paths accurately from the root layer
                     def services = [
                         [name: "frontend",  context: ".",                     dockerfile: "frontend/Dockerfile"],
                         [name: "auth",      context: "backend",               dockerfile: "backend/authService/Dockerfile"],
@@ -39,10 +38,10 @@ pipeline {
                             docker build -t streamingapp/${svc.name}:${IMAGE_TAG} -f ${svc.dockerfile} ${svc.context}
 
                             echo "Tagging ${svc.name}..."
-                            docker tag streamingapp/${svc.name}:${IMAGE_TAG} ://amazonaws.com/streamingapp/${svc.name}:${IMAGE_TAG}
+                            docker tag streamingapp/${svc.name}:${IMAGE_TAG} ://amazonaws.com/${svc.name}:${IMAGE_TAG}
 
                             echo "Pushing ${svc.name}..."
-                            docker push ://amazonaws.com/streamingapp/${svc.name}:${IMAGE_TAG}
+                            docker push ://amazonaws.com/${svc.name}:${IMAGE_TAG}
                             """
                         }
                     }
