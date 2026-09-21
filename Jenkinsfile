@@ -6,15 +6,16 @@ pipeline {
         IMAGE_TAG         = "latest"
         AWS_ACCOUNT_ID    = "243747081594"
         AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"
-        ECR_BASE_URL      = "://amazonaws.com"
-        ECR_REGISTRY      = "${ECR_BASE_URL}/streamingapp"
+        ECR_BASE_URL      = "243747081594.dkr.ecr.us-east-1.amazonaws.com"
+        ECR_REGISTRY      = "://amazonaws.com"
     }
 
     stages {
         stage('Login to ECR') {
             steps {
                 withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_BASE_URL}"
+                    // Hardcoded plain string target eliminates variable scope failure entirely
+                    sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 243747081594.dkr.ecr.us-east-1.amazonaws.com'
                 }
             }
         }
@@ -37,10 +38,10 @@ pipeline {
                             docker build -t streamingapp/${svc.name}:${IMAGE_TAG} -f ${svc.dockerfile} ${svc.context}
 
                             echo "Tagging ${svc.name}..."
-                            docker tag streamingapp/${svc.name}:${IMAGE_TAG} ${ECR_BASE_URL}/streamingapp/${svc.name}:${IMAGE_TAG}
+                            docker tag streamingapp/${svc.name}:${IMAGE_TAG} ://amazonaws.com/${svc.name}:${IMAGE_TAG}
 
                             echo "Pushing ${svc.name}..."
-                            docker push ${ECR_BASE_URL}/streamingapp/${svc.name}:${IMAGE_TAG}
+                            docker push ://amazonaws.com/${svc.name}:${IMAGE_TAG}
                             """
                         }
                     }
@@ -50,6 +51,7 @@ pipeline {
 
         stage('Deploy to EKS with Helm') {
             steps {
+                // Typo fixed: changed from ${ECR_REGISTRY/auth} to ${ECR_REGISTRY}/auth
                 sh """
                 helm upgrade --install streamingapp charts/streamingapp \
                   --namespace streamingapp \
