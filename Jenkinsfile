@@ -1,21 +1,27 @@
-pipeline {
+ pipeline {
     agent any
 
     environment {
-        AWS_REGION        = "us-east-1"
-        IMAGE_TAG         = "latest"
-        AWS_ACCOUNT_ID    = "243747081594"
-        AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"
-        ECR_BASE_URL      = "://amazonaws.com"
-        ECR_REGISTRY      = "://amazonaws.com/streamingapp"
+        AWS_REGION = "us-east-1"
+        ACCOUNT_ID = credentials('243747081594')   // Store your AWS Account ID in Jenkins credentials
+        IMAGE_TAG = "latest"
+        ECR_REGISTRY = "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/streamingapp"
     }
 
     stages {
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main',
+                    url: 'https://github.com/<your-username>/StreamingApp.git'
+            }
+        }
+
         stage('Login to ECR') {
             steps {
-                withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ://amazonaws.com'
-                }
+                sh '''
+                aws ecr get-login-password --region $AWS_REGION \
+                | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                '''
             }
         }
 
@@ -23,27 +29,25 @@ pipeline {
             steps {
                 script {
                     def services = [
-                        // 🚀 Context changed to "frontend" so that Step 3 finds its package.json perfectly!
-                        [name: "frontend",  context: "frontend",              dockerfile: "frontend/Dockerfile"],
-                        [name: "auth",      context: "backend",               dockerfile: "backend/authService/Dockerfile"],
-                        [name: "streaming", context: "backend",               dockerfile: "backend/streamingService/Dockerfile"],
-                        [name: "admin",     context: "backend",               dockerfile: "backend/adminService/Dockerfile"],
-                        [name: "chat",      context: "backend",               dockerfile: "backend/chatService/Dockerfile"]
+                        [name: "frontend", path: "frontend"],
+                        [name: "auth", path: "backend/authService"],
+                        [name: "streaming", path: "backend/streamingService"],
+                        [name: "admin", path: "backend/adminService"],
+                        [name: "chat", path: "backend/chatService"]
                     ]
 
-                    withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                        services.each { svc ->
-                            sh """
-                            echo "Building ${svc.name} using context ${svc.context} and file ${svc.dockerfile}..."
-                            docker build -t streamingapp/${svc.name}:${IMAGE_TAG} -f ${svc.dockerfile} ${svc.context}
+                    services.each { svc ->
+                        sh """
+                        echo "Building ${svc.name}..."
+                        docker build -t streamingapp/${svc.name}:$IMAGE_TAG ${svc.path}
 
-                            echo "Tagging ${svc.name}..."
-                            docker tag streamingapp/${svc.name}:${IMAGE_TAG} ://amazonaws.com/streamingapp/${svc.name}:${IMAGE_TAG}
+                        echo "Tagging ${svc.name}..."
+                        docker tag streamingapp/${svc.name}:$IMAGE_TAG \
+                          $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/streamingapp/${svc.name}:$IMAGE_TAG
 
-                            echo "Pushing ${svc.name}..."
-                            docker push ://amazonaws.com/streamingapp/${svc.name}:${IMAGE_TAG}
-                            """
-                        }
+                        echo "Pushing ${svc.name}..."
+                        docker push $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/streamingapp/${svc.name}:$IMAGE_TAG
+                        """
                     }
                 }
             }
@@ -51,20 +55,20 @@ pipeline {
 
         stage('Deploy to EKS with Helm') {
             steps {
-                sh """
+                sh '''
                 helm upgrade --install streamingapp charts/streamingapp \
                   --namespace streamingapp \
                   --create-namespace \
-                  --set global.imageTag=${IMAGE_TAG} \
-                  --set services.frontend.image.repository=${ECR_REGISTRY}/frontend \
-                  --set services.auth.image.repository=${ECR_REGISTRY}/auth \
-                  --set services.streaming.image.repository=${ECR_REGISTRY}/streaming \
-                  --set services.admin.image.repository=${ECR_REGISTRY}/admin \
-                  --set services.chat.image.repository=${ECR_REGISTRY}/chat \
+                  --set global.imageTag=$IMAGE_TAG \
+                  --set services.frontend.image.repository=$ECR_REGISTRY/frontend \
+                  --set services.auth.image.repository=$ECR_REGISTRY/auth \
+                  --set services.streaming.image.repository=$ECR_REGISTRY/streaming \
+                  --set services.admin.image.repository=$ECR_REGISTRY/admin \
+                  --set services.chat.image.repository=$ECR_REGISTRY/chat \
                   --set secrets.jwtSecret="replace-with-a-strong-secret" \
-                  --set aws.region=${AWS_REGION} \
-                  --set aws.s3Bucket="streamingapp-bucket1"
-                """
+                  --set aws.region=$AWS_REGION \
+                  --set aws.s3Bucket="your-s3-bucket-name"
+                '''
             }
         }
     }
