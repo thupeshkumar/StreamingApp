@@ -1,87 +1,166 @@
  pipeline {
-    agent any
+  agent any
 
-    environment {
-        AWS_REGION     = "us-east-1"
-        IMAGE_TAG      = "latest"
-        AWS_ACCOUNT_ID = "243747081594"   // Plain string, not a credential
-        ECR_BASE_URL   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-        ECR_REGISTRY   = "${ECR_BASE_URL}/streamingapp"
+  environment {
+    
+    AWS_REGION = 'us-east-1'
+    ECR_PREFIX = 'streamingapp'
+    RELEASE_NAME = 'streamingapp'
+    K8S_NAMESPACE = 'streamingapp'
+    AWS_CREDENTIALS_ID = 'Thupesh-aws-jenkins'
+  }
+
+  options {
+    timestamps()
+    disableConcurrentBuilds()
+  }
+
+  stages {
+
+    stage('Check Tools') {
+      steps {
+        sh 'echo $PATH'
+        sh 'which aws'
+        sh 'aws --version'
+        sh 'which docker'
+        sh 'docker --version'
+        sh 'which kubectl'
+        sh 'kubectl version --client'
+        sh 'which helm'
+        sh 'helm version'
+      }
     }
 
-    stages {
-        stage('Checkout Code') {
-            steps {
-                git branch: 'main',
-                    url: 'https://github.com/thupeshkumar/StreamingApp.git'
-            }
+    stage('Checkout') {
+      steps {
+        checkout scm
+        script {
+          env.IMAGE_TAG = sh(
+            returnStdout: true,
+            script: 'git rev-parse --short=12 HEAD'
+          ).trim()
         }
-
-        stage('Login to ECR') {
-            steps {
-                withAWS(credentials: 'Thupesh-aws-jenkins', region: "${AWS_REGION}") {
-                    sh '''
-                    aws ecr get-login-password --region $AWS_REGION \
-                    | docker login --username AWS --password-stdin $ECR_BASE_URL
-                    '''
-                }
-            }
-        }
-
-        stage('Build & Push Images') {
-            steps {
-                script {
-                    def services = [
-                        [name: "frontend", path: "frontend"],
-                        [name: "auth", path: "backend/authService"],
-                        [name: "streaming", path: "backend/streamingService"],
-                        [name: "admin", path: "backend/adminService"],
-                        [name: "chat", path: "backend/chatService"]
-                    ]
-
-                    services.each { svc ->
-                        sh """
-                        echo "Building ${svc.name}..."
-                        docker build -t streamingapp/${svc.name}:$IMAGE_TAG ${svc.path}
-
-                        echo "Tagging ${svc.name}..."
-                        docker tag streamingapp/${svc.name}:$IMAGE_TAG \
-                          $ECR_BASE_URL/streamingapp/${svc.name}:$IMAGE_TAG
-
-                        echo "Pushing ${svc.name}..."
-                        docker push $ECR_BASE_URL/streamingapp/${svc.name}:$IMAGE_TAG
-                        """
-                    }
-                }
-            }
-        }
-
-        stage('Deploy to EKS with Helm') {
-            steps {
-                sh '''
-                helm upgrade --install streamingapp charts/streamingapp \
-                  --namespace streamingapp \
-                  --create-namespace \
-                  --set global.imageTag=$IMAGE_TAG \
-                  --set services.frontend.image.repository=$ECR_REGISTRY/frontend \
-                  --set services.auth.image.repository=$ECR_REGISTRY/auth \
-                  --set services.streaming.image.repository=$ECR_REGISTRY/streaming \
-                  --set services.admin.image.repository=$ECR_REGISTRY/admin \
-                  --set services.chat.image.repository=$ECR_REGISTRY/chat \
-                  --set secrets.jwtSecret="replace-with-a-strong-secret" \
-                  --set aws.region=$AWS_REGION \
-                  --set aws.s3Bucket="your-s3-bucket-name"
-                '''
-            }
-        }
+      }
     }
 
-    post {
-        success {
-            echo "✅ Deployment succeeded!"
+    stage('AWS Login') {
+      steps {
+        script {
+          withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: env.AWS_CREDENTIALS_ID]
+          ]) {
+
+            env.AWS_ACCOUNT_ID = sh(
+              returnStdout: true,
+              script: 'aws sts get-caller-identity --query Account --output text'
+            ).trim()
+
+            env.ECR_REGISTRY = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com"
+
+            sh '''
+              aws ecr get-login-password --region "$AWS_REGION" \
+              | docker login --username AWS --password-stdin "$ECR_REGISTRY"
+            '''
+          }
         }
-        failure {
-            echo "❌ Deployment failed!"
-        }
+      }
     }
+
+    stage('Create ECR Repositories') {
+      steps {
+        script {
+          withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: env.AWS_CREDENTIALS_ID]
+          ]) {
+
+            sh 'bash scripts/create-ecr-repos.sh'
+          }
+        }
+      }
+    }
+
+    stage('Build and Push Images') {
+      steps {
+        script {
+
+          def services = [
+            [name: 'frontend', context: 'frontend', dockerfile: 'Dockerfile'],
+            [name: 'auth', context: 'backend/authService', dockerfile: 'Dockerfile'],
+            [name: 'streaming', context: 'backend', dockerfile: 'streamingService/Dockerfile'],
+            [name: 'admin', context: 'backend', dockerfile: 'adminService/Dockerfile'],
+            [name: 'chat', context: 'backend', dockerfile: 'chatService/Dockerfile']
+          ]
+
+          services.each { svc ->
+
+            def image = "${env.ECR_REGISTRY}/${env.ECR_PREFIX}/${svc.name}:${env.IMAGE_TAG}"
+
+            sh """
+              docker build \
+              -t ${image} \
+              -f ${svc.context}/${svc.dockerfile} \
+              ${svc.context}
+            """
+
+            sh "docker push ${image}"
+          }
+        }
+      }
+    }
+
+    stage('Deploy to EKS') {
+
+      when {
+        branch 'main'
+      }
+
+      steps {
+        script {
+
+          withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+            credentialsId: env.AWS_CREDENTIALS_ID]
+          ]) {
+
+            sh '''
+              helm upgrade --install "$RELEASE_NAME" charts/streamingapp \
+                --namespace "$K8S_NAMESPACE" \
+                --create-namespace \
+                --set services.frontend.image.repository="$ECR_REGISTRY/$ECR_PREFIX/frontend" \
+                --set services.auth.image.repository="$ECR_REGISTRY/$ECR_PREFIX/auth" \
+                --set services.streaming.image.repository="$ECR_REGISTRY/$ECR_PREFIX/streaming" \
+                --set services.admin.image.repository="$ECR_REGISTRY/$ECR_PREFIX/admin" \
+                --set services.chat.image.repository="$ECR_REGISTRY/$ECR_PREFIX/chat" \
+                --set global.imageTag="$IMAGE_TAG"
+            '''
+          }
+        }
+      }
+    }
+  }
+
+  post {
+
+    success {
+      sh '''
+        if [ -n "${SNS_TOPIC_ARN:-}" ]; then
+          aws sns publish \
+            --topic-arn "$SNS_TOPIC_ARN" \
+            --message "Streaming app deployment succeeded: $JOB_NAME #$BUILD_NUMBER ($IMAGE_TAG)"
+        fi
+      '''
+    }
+
+    failure {
+      sh '''
+        if [ -n "${SNS_TOPIC_ARN:-}" ]; then
+          aws sns publish \
+            --topic-arn "$SNS_TOPIC_ARN" \
+            --message "Streaming app deployment failed: $JOB_NAME #$BUILD_NUMBER"
+        fi
+      '''
+    }
+  }
 }
