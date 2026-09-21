@@ -1,13 +1,15 @@
 pipeline {
     agent any
 
-    environment {
+        environment {
         AWS_REGION        = "us-east-1"
         IMAGE_TAG         = "latest"
         AWS_ACCOUNT_ID    = "243747081594"
         AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"
         ECR_BASE_URL      = "243747081594.dkr.ecr.us-east-1.amazonaws.com"
         ECR_REGISTRY      = "${ECR_BASE_URL}/streamingapp"
+        // 🚀 Instructs Node.js to use up to 2GB of virtual memory if needed during npm runs
+        NODE_OPTIONS      = "--max-old-space-size=2048" 
     }
 
     stages {
