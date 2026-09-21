@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         AWS_REGION = "us-east-1"
-        ACCOUNT_ID = credentials('aws-account-id')   // Store your AWS Account ID in Jenkins credentials
+        ACCOUNT_ID = credentials('AKIATRQDVJV5LDMPPMMV')   // Store your AWS Account ID in Jenkins credentials
         AWS_CREDS = 'Thupesh-aws-jenkins'                   // AWS credentials ID (Access Key + Secret Key)
         IMAGE_TAG = "latest"
         ECR_REGISTRY = "${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/streamingapp"
