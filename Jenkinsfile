@@ -6,17 +6,17 @@ pipeline {
         IMAGE_TAG         = "latest"
         AWS_ACCOUNT_ID    = "243747081594"
         AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"
-        ECR_BASE_URL      = "://amazonaws.com"
+        ECR_BASE_URL      = "243747081594.dkr.ecr.us-east-1.amazonaws.com"
         ECR_REGISTRY      = "${ECR_BASE_URL}/streamingapp"
     }
 
     stages {
-        // 🚀 Redundant 'Checkout Code' stage removed entirely to prevent Git 128 Errors.
-        
         stage('Login to ECR') {
             steps {
                 withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_BASE_URL'
+                    // Changed to double quotes so Jenkins explicitly resolves the ECR_BASE_URL variable.
+                    // The secret variable uses \$ so the secret mask engine doesn't complain about leakage.
+                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_BASE_URL}"
                 }
             }
         }
@@ -52,20 +52,20 @@ pipeline {
 
         stage('Deploy to EKS with Helm') {
             steps {
-                sh '''
+                sh """
                 helm upgrade --install streamingapp charts/streamingapp \
                   --namespace streamingapp \
                   --create-namespace \
-                  --set global.imageTag=$IMAGE_TAG \
-                  --set services.frontend.image.repository=$ECR_REGISTRY/frontend \
-                  --set services.auth.image.repository=$ECR_REGISTRY/auth \
-                  --set services.streaming.image.repository=$ECR_REGISTRY/streaming \
-                  --set services.admin.image.repository=$ECR_REGISTRY/admin \
-                  --set services.chat.image.repository=$ECR_REGISTRY/chat \
+                  --set global.imageTag=${IMAGE_TAG} \
+                  --set services.frontend.image.repository=${ECR_REGISTRY}/frontend \
+                  --set services.auth.image.repository=${ECR_REGISTRY/auth} \
+                  --set services.streaming.image.repository=${ECR_REGISTRY}/streaming \
+                  --set services.admin.image.repository=${ECR_REGISTRY}/admin \
+                  --set services.chat.image.repository=${ECR_REGISTRY}/chat \
                   --set secrets.jwtSecret="replace-with-a-strong-secret" \
-                  --set aws.region=$AWS_REGION \
+                  --set aws.region=${AWS_REGION} \
                   --set aws.s3Bucket="streamingapp-bucket1"
-                '''
+                """
             }
         }
     }
