@@ -5,7 +5,7 @@ pipeline {
         AWS_REGION     = "us-east-1"
         IMAGE_TAG      = "latest"
         // Replace this with your literal 12-digit AWS Account ID directly
-        AWS_ACCOUNT_ID = "AKIATRQDVJV5LDMPPMMV" 
+        AWS_ACCOUNT_ID = "243747081594" 
         ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/streamingapp"
     }
 
