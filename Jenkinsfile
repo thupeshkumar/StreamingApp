@@ -16,14 +16,16 @@
             }
         }
 
-        stage('Login to ECR') {
-            steps {
-                sh '''
-                aws ecr get-login-password --region $AWS_REGION \
-                | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-                '''
-            }
+       stage('Login to ECR') {
+    steps {
+        withAWS(credentials: 'Thupesh-aws-jenkins', region: "${AWS_REGION}") {
+            sh '''
+            aws ecr get-login-password --region $AWS_REGION \
+            | docker login --username AWS --password-stdin $ECR_BASE_URL
+            '''
         }
+    }
+}
 
         stage('Build & Push Images') {
             steps {
