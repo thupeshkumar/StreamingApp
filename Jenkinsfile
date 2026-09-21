@@ -6,23 +6,16 @@ pipeline {
         IMAGE_TAG         = "latest"
         AWS_ACCOUNT_ID    = "243747081594"
         AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"
-        // Explicitly format the full base URL here to avoid script concatenation errors
-        ECR_BASE_URL      = "243747081594.dkr.ecr.us-east-1.amazonaws.com"
+        ECR_BASE_URL      = "://amazonaws.com"
         ECR_REGISTRY      = "${ECR_BASE_URL}/streamingapp"
     }
 
     stages {
-        stage('Checkout Code') {
-            steps {
-                git branch: 'main',
-                    url: 'https://github.com'
-            }
-        }
-
+        // 🚀 Redundant 'Checkout Code' stage removed entirely to prevent Git 128 Errors.
+        
         stage('Login to ECR') {
             steps {
                 withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    // Uses the completely pre-formatted base variable
                     sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_BASE_URL'
                 }
             }
