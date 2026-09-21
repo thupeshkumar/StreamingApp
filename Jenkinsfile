@@ -2,23 +2,24 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION     = "us-east-1"
-        IMAGE_TAG      = "latest"
-        AWS_ACCOUNT_ID = "243747081594" // Cleaned 12-digit number without hyphens
-        AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV" // Injected as a safe standard string
-        ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}://"
+        AWS_REGION        = "us-east-1"
+        IMAGE_TAG         = "latest"
+        AWS_ACCOUNT_ID    = "243747081594"          // Cleaned AWS account string without hyphens
+        AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"  // Injected directly as a non-secret string
+        ECR_REGISTRY      = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}://"
     }
 
     stages {
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/thupeshkumar/StreamingApp.git'
+                git branch: 'main',
+                    url: 'https://github.com/thupeshkumar/StreamingApp.git'
             }
         }
 
         stage('Login to ECR') {
             steps {
-                // Now you only bind the actual hidden password key
+                // This block securely injects ONLY your Secret Access Key from Jenkins
                 withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_://amazonaws.com'
                 }
@@ -76,7 +77,11 @@ pipeline {
     }
 
     post {
-        success { echo "✅ Deployment succeeded!" }
-        failure { echo "❌ Deployment failed!" }
+        success {
+            echo "✅ Deployment succeeded!"
+        }
+        failure {
+            echo "❌ Deployment failed!"
+        }
     }
 }
