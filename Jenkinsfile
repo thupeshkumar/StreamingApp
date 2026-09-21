@@ -22,7 +22,7 @@ pipeline {
                 // This wrapper injects the underlying AWS keys securely into your shell environment
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding', 
-                    credentialsId: 'Thupesh-aws-jenkins', 
+                    credentialsId: 'AKIATRQDVJV5LDMPPMMV', 
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                 ]]) {
