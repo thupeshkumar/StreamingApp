@@ -1,76 +1,69 @@
 pipeline {
     agent any
-
     environment {
-        AWS_REGION        = "us-east-1"
-        IMAGE_TAG         = "latest"
-        AWS_ACCOUNT_ID    = "243747081594"
-        AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"
-        ECR_BASE_URL      = "243747081594.dkr.ecr.us-east-1.amazonaws.com"
-        ECR_REGISTRY      = "://amazonaws.com"
+        AWS_REGION = 'us-east-1'
+        ECR_REGISTRY = '243747081594.dkr.ecr.us-east-1.amazonaws.com'
     }
-
     stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/thupeshkumar/StreamingApp.git'
+            }
+        }
         stage('Login to ECR') {
             steps {
-                withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    // Hardcoded plain string target eliminates variable scope failure entirely
-                    sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 243747081594.dkr.ecr.us-east-1.amazonaws.com'
+                withCredentials([usernamePassword(credentialsId: 'Thupesh-aws-jenkins', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY'
                 }
             }
         }
-
-        stage('Build & Push Images') {
+        stage('Build and Push Frontend') {
             steps {
-                script {
-                    def services = [
-                        [name: "frontend",  context: ".",                     dockerfile: "frontend/Dockerfile"],
-                        [name: "auth",      context: "backend",               dockerfile: "backend/authService/Dockerfile"],
-                        [name: "streaming", context: "backend",               dockerfile: "backend/streamingService/Dockerfile"],
-                        [name: "admin",     context: "backend",               dockerfile: "backend/adminService/Dockerfile"],
-                        [name: "chat",      context: "backend",               dockerfile: "backend/chatService/Dockerfile"]
-                    ]
-
-                    withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                        services.each { svc ->
-                            sh """
-                            echo "Building ${svc.name} using context ${svc.context} and file ${svc.dockerfile}..."
-                            docker build -t streamingapp/${svc.name}:${IMAGE_TAG} -f ${svc.dockerfile} ${svc.context}
-
-                            echo "Tagging ${svc.name}..."
-                            docker tag streamingapp/${svc.name}:${IMAGE_TAG} ://amazonaws.com/${svc.name}:${IMAGE_TAG}
-
-                            echo "Pushing ${svc.name}..."
-                            docker push ://amazonaws.com/${svc.name}:${IMAGE_TAG}
-                            """
-                        }
-                    }
+                withCredentials([usernamePassword(credentialsId: 'Thupesh-aws-jenkins', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh 'docker build -t streaming-frontend ./frontend'
+                    sh 'docker tag streaming-frontend:latest $ECR_REGISTRY/streaming-frontend:latest'
+                    sh 'docker push $ECR_REGISTRY/streaming-frontend:latest'
                 }
             }
         }
-
-        stage('Deploy to EKS with Helm') {
+        stage('Build and Push Auth') {
             steps {
-                // Typo fixed: changed from ${ECR_REGISTRY/auth} to ${ECR_REGISTRY}/auth
-                sh """
-                helm upgrade --install streamingapp charts/streamingapp \
-                  --namespace streamingapp \
-                  --create-namespace \
-                  --set global.imageTag=${IMAGE_TAG} \
-                  --set services.frontend.image.repository=${ECR_REGISTRY}/frontend \
-                  --set services.auth.image.repository=${ECR_REGISTRY}/auth \
-                  --set services.streaming.image.repository=${ECR_REGISTRY}/streaming \
-                  --set services.admin.image.repository=${ECR_REGISTRY}/admin \
-                  --set services.chat.image.repository=${ECR_REGISTRY}/chat \
-                  --set secrets.jwtSecret="replace-with-a-strong-secret" \
-                  --set aws.region=${AWS_REGION} \
-                  --set aws.s3Bucket="streamingapp-bucket1"
-                """
+                withCredentials([usernamePassword(credentialsId: 'Thupesh-aws-jenkins', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh 'docker build -t streaming-auth ./backend/authService'
+                    sh 'docker tag streaming-auth:latest $ECR_REGISTRY/streaming-auth:latest'
+                    sh 'docker push $ECR_REGISTRY/streaming-auth:latest'
+                }
+            }
+        }
+        stage('Build and Push Streaming') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'Thupesh-aws-jenkins', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh 'docker build -t streaming-service -f ./backend/streamingService/Dockerfile ./backend'
+                    sh 'docker tag streaming-service:latest $ECR_REGISTRY/streaming-service:latest'
+                    sh 'docker push $ECR_REGISTRY/streaming-service:latest'
+                }
+            }
+        }
+        stage('Build and Push Admin') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'Thupesh-aws-jenkins', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh 'docker build -t streaming-admin -f ./backend/adminService/Dockerfile ./backend'
+                    sh 'docker tag streaming-admin:latest $ECR_REGISTRY/streaming-admin:latest'
+                    sh 'docker push $ECR_REGISTRY/streaming-admin:latest'
+                }
+            }
+        }
+        stage('Build and Push Chat') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'Thupesh-aws-jenkins', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh 'docker build -t streaming-chat -f ./backend/chatService/Dockerfile ./backend'
+                    sh 'docker tag streaming-chat:latest $ECR_REGISTRY/streaming-chat:latest'
+                    sh 'docker push $ECR_REGISTRY/streaming-chat:latest'
+                }
             }
         }
     }
-
-    post {
+      post {
         success {
             echo "✅ Deployment succeeded!"
         }
