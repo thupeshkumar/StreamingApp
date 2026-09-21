@@ -1,8 +1,13 @@
 pipeline {
     agent any
+
     environment {
-        AWS_REGION = 'us-east-1'
-        ECR_REGISTRY = '243747081594.dkr.ecr.us-east-1.amazonaws.com'
+        AWS_REGION        = "us-east-1"
+        IMAGE_TAG         = "latest"
+        AWS_ACCOUNT_ID    = "243747081594"
+        AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"
+        ECR_BASE_URL      = "243747081594.dkr.ecr.us-east-1.amazonaws.com"
+        ECR_REGISTRY      = "://amazonaws.com"
     }
     stages {
         stage('Checkout') {
