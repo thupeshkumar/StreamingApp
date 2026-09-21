@@ -4,24 +4,26 @@ pipeline {
     environment {
         AWS_REGION        = "us-east-1"
         IMAGE_TAG         = "latest"
-        AWS_ACCOUNT_ID    = "243747081594"          // Cleaned AWS account string without hyphens
-        AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"  // Injected directly as a non-secret string
-        ECR_REGISTRY      = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}://"
+        AWS_ACCOUNT_ID    = "243747081594"
+        AWS_ACCESS_KEY_ID = "AKIATRQDVJV5LDMPPMMV"
+        // Explicitly format the full base URL here to avoid script concatenation errors
+        ECR_BASE_URL      = "243747081594.dkr.ecr.us-east-1.amazonaws.com"
+        ECR_REGISTRY      = "${ECR_BASE_URL}/streamingapp"
     }
 
     stages {
         stage('Checkout Code') {
             steps {
                 git branch: 'main',
-                    url: 'https://github.com/thupeshkumar/StreamingApp.git'
+                    url: 'https://github.com'
             }
         }
 
         stage('Login to ECR') {
             steps {
-                // This block securely injects ONLY your Secret Access Key from Jenkins
                 withCredentials([string(credentialsId: 'Thupesh-aws-jenkins', variable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_://amazonaws.com'
+                    // Uses the completely pre-formatted base variable
+                    sh 'aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_BASE_URL'
                 }
             }
         }
@@ -44,11 +46,10 @@ pipeline {
                             docker build -t streamingapp/${svc.name}:${IMAGE_TAG} ${svc.path}
 
                             echo "Tagging ${svc.name}..."
-                            docker tag streamingapp/${svc.name}:${IMAGE_TAG} \
-                              ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}:///${svc.name}:${IMAGE_TAG}
+                            docker tag streamingapp/${svc.name}:${IMAGE_TAG} ${ECR_BASE_URL}/streamingapp/${svc.name}:${IMAGE_TAG}
 
                             echo "Pushing ${svc.name}..."
-                            docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}:///${svc.name}:${IMAGE_TAG}
+                            docker push ${ECR_BASE_URL}/streamingapp/${svc.name}:${IMAGE_TAG}
                             """
                         }
                     }
