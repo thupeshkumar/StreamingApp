@@ -21,7 +21,7 @@ ENV REACT_APP_ADMIN_API_URL=${REACT_APP_ADMIN_API_URL}
 ENV REACT_APP_CHAT_API_URL=${REACT_APP_CHAT_API_URL}
 ENV REACT_APP_CHAT_SOCKET_URL=${REACT_APP_CHAT_SOCKET_URL}
 
-RUN npm run build
+RUN NODE_OPTIONS="--max-old-space-size=1024" npm run build
 
 FROM nginx:1.27-alpine AS production
 COPY --from=build /app/build /usr/share/nginx/html
