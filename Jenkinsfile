@@ -1,3 +1,4 @@
+```groovy
 pipeline {
     agent any
 
@@ -5,11 +6,10 @@ pipeline {
         AWS_REGION = 'us-east-1'
         AWS_ACCOUNT_ID = '243747081594'
 
-        FRONTEND_REPO =
-            "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/streaming-frontend"
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-        BACKEND_REPO =
-            "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/streaming-backend"
+        FRONTEND_REPOSITORY = "${ECR_REGISTRY}/streaming-frontend"
+        BACKEND_REPOSITORY  = "${ECR_REGISTRY}/streaming-backend"
 
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
@@ -18,66 +18,164 @@ pipeline {
 
         stage('Checkout') {
             steps {
+                echo 'Checking out source code...'
                 checkout scm
             }
         }
 
-        stage('Build Frontend') {
+        stage('Verify Tools') {
             steps {
                 sh '''
-                    docker build \
-                    -t ${FRONTEND_REPO}:${IMAGE_TAG} \
-                    ./frontend
+                    set -e
+
+                    echo "Checking required tools..."
+
+                    git --version
+                    docker --version
+                    aws --version
+
+                    echo "AWS identity:"
+                    aws sts get-caller-identity
                 '''
             }
         }
 
-        stage('Build Backend') {
+        stage('Build Frontend Image') {
             steps {
+                echo 'Building frontend Docker image...'
+
                 sh '''
+                    set -e
+
                     docker build \
-                    -t ${BACKEND_REPO}:${IMAGE_TAG} \
-                    ./backend
+                        -t ${FRONTEND_REPOSITORY}:${IMAGE_TAG} \
+                        -t ${FRONTEND_REPOSITORY}:latest \
+                        ./frontend
                 '''
             }
         }
 
-        stage('Login to ECR') {
+        stage('Build Backend Image') {
             steps {
+                echo 'Building backend Docker image...'
+
                 sh '''
+                    set -e
+
+                    docker build \
+                        -t ${BACKEND_REPOSITORY}:${IMAGE_TAG} \
+                        -t ${BACKEND_REPOSITORY}:latest \
+                        ./backend
+                '''
+            }
+        }
+
+        stage('Login to Amazon ECR') {
+            steps {
+                echo 'Logging in to Amazon ECR...'
+
+                sh '''
+                    set -e
+
                     aws ecr get-login-password \
-                    --region ${AWS_REGION} |
-                    docker login \
-                    --username AWS \
-                    --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                        --region ${AWS_REGION} \
+                    | docker login \
+                        --username AWS \
+                        --password-stdin ${ECR_REGISTRY}
                 '''
             }
         }
 
-        stage('Push Frontend') {
+        stage('Push Frontend Image') {
             steps {
+                echo 'Pushing frontend image to ECR...'
+
                 sh '''
-                    docker push ${FRONTEND_REPO}:${IMAGE_TAG}
+                    set -e
+
+                    docker push ${FRONTEND_REPOSITORY}:${IMAGE_TAG}
+                    docker push ${FRONTEND_REPOSITORY}:latest
                 '''
             }
         }
 
-        stage('Push Backend') {
+        stage('Push Backend Image') {
             steps {
+                echo 'Pushing backend image to ECR...'
+
                 sh '''
-                    docker push ${BACKEND_REPO}:${IMAGE_TAG}
+                    set -e
+
+                    docker push ${BACKEND_REPOSITORY}:${IMAGE_TAG}
+                    docker push ${BACKEND_REPOSITORY}:latest
+                '''
+            }
+        }
+
+        stage('Verify ECR Images') {
+            steps {
+                echo 'Verifying images in ECR...'
+
+                sh '''
+                    set -e
+
+                    echo "Frontend image:"
+                    aws ecr describe-images \
+                        --repository-name streaming-frontend \
+                        --region ${AWS_REGION} \
+                        --query 'imageDetails[*].imageTags' \
+                        --output table
+
+                    echo "Backend image:"
+                    aws ecr describe-images \
+                        --repository-name streaming-backend \
+                        --region ${AWS_REGION} \
+                        --query 'imageDetails[*].imageTags' \
+                        --output table
                 '''
             }
         }
     }
 
     post {
+
         success {
-            echo 'Docker images successfully pushed to ECR.'
+            echo '''
+=========================================
+BUILD SUCCESSFUL
+=========================================
+
+Frontend image:
+${FRONTEND_REPOSITORY}:${IMAGE_TAG}
+
+Backend image:
+${BACKEND_REPOSITORY}:${IMAGE_TAG}
+
+Both Docker images were successfully
+built and pushed to Amazon ECR.
+=========================================
+'''
         }
 
         failure {
-            echo 'Pipeline failed.'
+            echo '''
+=========================================
+BUILD FAILED
+=========================================
+
+Check the Jenkins console output for
+the stage that failed.
+=========================================
+'''
+        }
+
+        always {
+            sh '''
+                echo "Cleaning unused Docker images..."
+
+                docker image prune -f || true
+            '''
         }
     }
 }
+```
