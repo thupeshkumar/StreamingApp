@@ -1,4 +1,4 @@
-```groovy
+```text
 pipeline {
     agent any
 
@@ -119,14 +119,14 @@ pipeline {
                 sh '''
                     set -e
 
-                    echo "Frontend image:"
+                    echo "Frontend images:"
                     aws ecr describe-images \
                         --repository-name streaming-frontend \
                         --region ${AWS_REGION} \
                         --query 'imageDetails[*].imageTags' \
                         --output table
 
-                    echo "Backend image:"
+                    echo "Backend images:"
                     aws ecr describe-images \
                         --repository-name streaming-backend \
                         --region ${AWS_REGION} \
@@ -145,14 +145,9 @@ pipeline {
 BUILD SUCCESSFUL
 =========================================
 
-Frontend image:
-${FRONTEND_REPOSITORY}:${IMAGE_TAG}
-
-Backend image:
-${BACKEND_REPOSITORY}:${IMAGE_TAG}
-
-Both Docker images were successfully
+Docker images were successfully
 built and pushed to Amazon ECR.
+
 =========================================
 '''
         }
@@ -165,6 +160,7 @@ BUILD FAILED
 
 Check the Jenkins console output for
 the stage that failed.
+
 =========================================
 '''
         }
@@ -172,7 +168,6 @@ the stage that failed.
         always {
             sh '''
                 echo "Cleaning unused Docker images..."
-
                 docker image prune -f || true
             '''
         }
