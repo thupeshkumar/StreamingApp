@@ -1,4 +1,3 @@
-```text
 pipeline {
     agent any
 
