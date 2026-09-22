@@ -172,4 +172,3 @@ the stage that failed.
         }
     }
 }
-```
